@@ -1,0 +1,66 @@
+name: intel-dmg
+
+# Builds the Hermes Desktop *bundled* DMG for macOS Intel (x86_64) on an Intel
+# runner, through the same local-test path upstream documents
+# (scripts/build-bundle.sh): unsigned, not notarized, packages the checked-out
+# commit, artifacts land in apps/desktop/release/.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag or commit to build
+        default: v0.22.5
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    timeout-minutes: 330
+    steps:
+      - name: Report and free disk space
+        shell: bash
+        run: |
+          df -h /
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches/* 2>/dev/null || true
+          sudo rm -rf "$HOME/Library/Android" "$HOME/Library/Caches/Homebrew" 2>/dev/null || true
+          df -h /
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - name: Confirm the Intel target
+        shell: bash
+        run: |
+          uname -m
+          sw_vers
+          git rev-parse HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build bundled macOS x64 DMG and ZIP
+        shell: bash
+        run: ./scripts/build-bundle.sh --variant bundled
+
+      - name: List artifacts
+        if: always()
+        shell: bash
+        run: |
+          df -h /
+          ls -lh apps/desktop/release || true
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: hermes-macos-x64
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+          if-no-files-found: error
+          retention-days: 7
